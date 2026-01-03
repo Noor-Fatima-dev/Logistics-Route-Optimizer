@@ -5,6 +5,7 @@ import random
 pygame.init()
 
 random.seed(42)
+# 42
 
 WIDTH, HEIGHT = 600, 600
 CELL = 10
@@ -18,22 +19,22 @@ HOUSE = 2
 HIGHWAY = 3
 OBSTACLE = 4      
 
-dot_row, dot_col = ROWS - 3, 2
+dot_row, dot_col = ROWS - 6, 2
 target_row, target_col = 2, COLS - 3
 
-# Updated colors to match the image
+
 COLORS = {
-    ROAD: (255, 255, 255),      # Cream/wheat color for roads
-    BUILDING: (210, 180, 140),   # Tan for buildings (darker than roads)
-    HOUSE: (85, 140, 85),        # Green for houses
-    HIGHWAY: (255, 140, 0),      # Orange for highway
-    OBSTACLE: (200, 100, 50)     # Dark orange for obstacles
+    ROAD: (255, 255, 255),      # white
+    BUILDING: (210, 180, 140),   # Tan
+    HOUSE: (85, 140, 85),        # Green
+    HIGHWAY: (255, 140, 0),      # Orange
+    OBSTACLE: (200, 100, 50)     # Dark orange
 }
 
 inf = math.inf
 houses = []
 path = []
-adj = [[inf]*NODES for i in range(NODES)]
+adj = [[1000]*NODES for i in range(NODES)]
 city_map = [[BUILDING for _ in range(COLS)] for _ in range(ROWS)]
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -50,6 +51,85 @@ def node_id(r, c):
 
 def rc_from_node(node):
     return node // COLS, node % COLS
+
+
+
+
+# ------------------ MAZE MAP ------------------
+
+# BUILDING by default
+for r in range(ROWS):
+    for c in range(COLS):
+        city_map[r][c] = BUILDING
+
+STEP = 2
+
+# Recursive backtracking
+def carve_maze(r, c):
+    directions = [(STEP,0), (-STEP,0), (0,STEP), (0,-STEP)]
+    random.shuffle(directions)
+
+    for dr, dc in directions:
+        nr, nc = r + dr, c + dc
+        if 1 <= nr < ROWS-1 and 1 <= nc < COLS-1:
+            if city_map[nr][nc] == BUILDING:
+                city_map[r + dr//2][c + dc//2] = ROAD 
+                city_map[nr][nc] = ROAD
+                carve_maze(nr, nc)
+
+start_r = random.randrange(1, ROWS, STEP)
+start_c = random.randrange(1, COLS, STEP)
+city_map[start_r][start_c] = ROAD
+carve_maze(start_r, start_c)
+
+# Fusion
+
+for r in range(2, ROWS-2):
+    for c in range(2, COLS-2):
+        if city_map[r][c] == BUILDING:
+            if random.random() < 0.15:
+                city_map[r][c] = ROAD
+
+# 2 Highways
+
+mid = ROWS // 2 - CELL*2
+for c in range(COLS):
+    city_map[mid][c] = HIGHWAY
+    if mid+1 < ROWS:
+        city_map[mid+1][c] = HIGHWAY
+
+mid = COLS // 2 + CELL*2
+for r in range(ROWS):
+    city_map[r][mid] = HIGHWAY
+    if mid+1 < COLS:
+        city_map[r][mid+1] = HIGHWAY
+
+# ------------------ OBSTACLES ------------------
+
+for _ in range(20):
+    r = random.randint(2, ROWS-3)
+    c = random.randint(2, COLS-3)
+    city_map[r][c] = OBSTACLE
+
+# ------------------ HOUSES ------------------
+
+houses = []
+attempts = 0
+
+while len(houses) < 12 and attempts < 300:
+    r = random.randint(2, ROWS-3)
+    c = random.randint(2, COLS-3)
+
+    if city_map[r][c] == BUILDING:
+        # must touch a road
+        if any(
+            0 <= r+dr < ROWS and 0 <= c+dc < COLS and city_map[r+dr][c+dc] == ROAD
+            for dr, dc in [(1,0),(-1,0),(0,1),(0,-1)]
+        ):
+            city_map[r][c] = HOUSE
+            houses.append((r, c))
+    attempts += 1
+
 
 # Adjacency matrix
 for r in range(ROWS):
@@ -70,170 +150,13 @@ for r in range(ROWS):
                 if neighbor_type == ROAD:
                     adj[u][v] = 1.0      # Normal cost
                 elif neighbor_type == HIGHWAY:
-                    adj[u][v] = 0.5      # Fast/cheap
+                    adj[u][v] = 0.5      # Cheap
                 elif neighbor_type == HOUSE:
                     adj[u][v] = 1.0      # Can deliver here
                 elif neighbor_type == OBSTACLE:
-                    adj[u][v] = inf      # Cannot pass
+                    adj[u][v] = 1000      # Cannot pass
                 elif neighbor_type == BUILDING:
-                    adj[u][v] = 3.0      # Expensive
-
-
-
-
-
-
-# ------------------------- CITY MAP ---------------------------
-
-# Initialize everything as buildings
-for r in range(ROWS):
-    for c in range(COLS):
-        city_map[r][c] = BUILDING
-
-# Create winding maze-like roads
-# Vertical roads that snake and branch
-for c in [8, 16, 24, 32, 40, 48]:
-    shift = 0
-    for r in range(ROWS):
-        # Random drift and branching
-        if random.random() < 0.2:
-            shift += random.choice([-2, -1, 0, 1, 2])
-            shift = max(-4, min(4, shift))
-        
-        if 0 <= c + shift < COLS:
-            city_map[r][c + shift] = ROAD
-            
-            # Random horizontal branches
-            if random.random() < 0.15:
-                branch_len = random.randint(2, 6)
-                direction = random.choice([-1, 1])
-                for b in range(branch_len):
-                    if 0 <= c + shift + (b * direction) < COLS:
-                        city_map[r][c + shift + (b * direction)] = ROAD
-
-# Horizontal roads that snake and branch
-for r in [6, 14, 22, 30, 38, 46, 54]:
-    shift = 0
-    for c in range(COLS):
-        # Random drift and branching
-        if random.random() < 0.2:
-            shift += random.choice([-2, -1, 0, 1, 2])
-            shift = max(-4, min(4, shift))
-        
-        if 0 <= r + shift < ROWS:
-            city_map[r + shift][c] = ROAD
-            
-            # Random vertical branches
-            if random.random() < 0.15:
-                branch_len = random.randint(2, 6)
-                direction = random.choice([-1, 1])
-                for b in range(branch_len):
-                    if 0 <= r + shift + (b * direction) < ROWS:
-                        city_map[r + shift + (b * direction)][c] = ROAD
-
-# Add many winding alleys and dead-ends
-for _ in range(50):
-    r = random.randint(3, ROWS - 4)
-    c = random.randint(3, COLS - 4)
-    length = random.randint(3, 8)
-    direction = random.choice([(1,0), (-1,0), (0,1), (0,-1)])
-    
-    for i in range(length):
-        rr = r + i * direction[0]
-        cc = c + i * direction[1]
-        
-        # Random turns in the alley
-        if random.random() < 0.3:
-            direction = random.choice([(1,0), (-1,0), (0,1), (0,-1)])
-        
-        if 0 <= rr < ROWS and 0 <= cc < COLS and city_map[rr][cc] == BUILDING:
-            city_map[rr][cc] = ROAD
-
-# Create winding highway with gaps
-highway_col = COLS // 2 + random.randint(-8, 8)
-shift = 0
-
-for r in range(ROWS):
-    # Highway meanders
-    if random.random() < 0.12:
-        shift += random.choice([-1, 0, 0, 1])
-        shift = max(-3, min(3, shift))
-    
-    col = highway_col + shift
-    
-    if 0 <= col < COLS:
-        # Make highway 2-3 cells wide
-        width = random.choice([2, 2, 3])
-        for w in range(width):
-            if 0 <= col + w < COLS:
-                city_map[r][col + w] = HIGHWAY
-    
-    # Random gaps and obstacles in highway
-    if random.random() < 0.06:
-        if 0 <= col < COLS:
-            city_map[r][col] = OBSTACLE
-
-# Add random obstacle blocks scattered around
-for _ in range(25):
-    r = random.randint(3, ROWS - 4)
-    c = random.randint(3, COLS - 4)
-    
-    # Create irregular obstacle shapes
-    shape = random.choice(['line', 'block', 'L'])
-    
-    if shape == 'line':
-        length = random.randint(2, 5)
-        direction = random.choice([(1,0), (-1,0), (0,1), (0,-1)])
-        for i in range(length):
-            rr, cc = r + i*direction[0], c + i*direction[1]
-            if 0 <= rr < ROWS and 0 <= cc < COLS:
-                city_map[rr][cc] = OBSTACLE
-    
-    elif shape == 'block':
-        size = random.randint(1, 3)
-        for dr in range(size):
-            for dc in range(size):
-                if 0 <= r+dr < ROWS and 0 <= c+dc < COLS:
-                    city_map[r+dr][c+dc] = OBSTACLE
-    
-    else:  # L-shape
-        length = random.randint(2, 4)
-        for i in range(length):
-            if 0 <= r+i < ROWS and 0 <= c < COLS:
-                city_map[r+i][c] = OBSTACLE
-            if 0 <= r < ROWS and 0 <= c+i < COLS:
-                city_map[r][c+i] = OBSTACLE
-
-# ---------------- HOUSES (Green blocks) ----------------
-
-houses = []
-attempts = 0
-
-while len(houses) < 15 and attempts < 300:
-    r = random.randint(2, ROWS - 3)
-    c = random.randint(2, COLS - 3)
-
-    if city_map[r][c] == BUILDING:
-        # Must be adjacent to a road
-        adjacent_to_road = any(
-            0 <= r+dr < ROWS and 0 <= c+dc < COLS and city_map[r+dr][c+dc] == ROAD
-            for dr, dc in [(1,0),(-1,0),(0,1),(0,-1)]
-        )
-        if adjacent_to_road:
-            # Create 2x2 house blocks for better visibility
-            can_place = True
-            for dr in range(2):
-                for dc in range(2):
-                    if r+dr >= ROWS or c+dc >= COLS or city_map[r+dr][c+dc] not in [BUILDING, HOUSE]:
-                        can_place = False
-            
-            if can_place:
-                for dr in range(2):
-                    for dc in range(2):
-                        city_map[r+dr][c+dc] = HOUSE
-                houses.append((r, c))
-    attempts += 1
-
+                    adj[u][v] = 5.0      # Expensive
 
 
 
@@ -248,7 +171,7 @@ while running:
     current = node_id(dot_row, dot_col)
     neighbors = []
     for v in range(NODES):
-        if adj[current][v] == 1:
+        if adj[current][v] != 1000 and rc_from_node(v) not in path:
             neighbors.append(rc_from_node(v))
 
     # Draw the city grid
@@ -262,10 +185,16 @@ while running:
             if(cell_type == ROAD or cell_type == HIGHWAY):
                 pygame.draw.rect(screen, (210, 180, 140), rect_pos, 1)
 
+    neighborWeights = []
+    for v in range(NODES):
+        if adj[current][v] != 1000:
+            neighborWeights.append(adj[current][v])
+
     # Update path
     if len(neighbors) > 0:
         path.append((dot_row, dot_col))
-        dot_row, dot_col = random.choice(neighbors)
+        min_index = neighborWeights.index(min(neighborWeights))
+        dot_row, dot_col = neighbors[min_index]
 
     # Draw path trail
     for i in path: 
@@ -283,6 +212,6 @@ while running:
     pygame.draw.circle(screen, (255, 255, 255), (ax, ay), 5, 1)
 
     pygame.display.update()
-    clock.tick(8)
+    clock.tick(1)
 
 pygame.quit()

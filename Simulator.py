@@ -7,6 +7,7 @@ pygame.init()
 random.seed(42)
 # 42
 
+# starting variables
 WIDTH, HEIGHT = 600, 600
 CELL = 10
 ROWS = HEIGHT // CELL
@@ -24,18 +25,21 @@ target_row, target_col = 2, COLS - 3
 
 
 COLORS = {
-    ROAD: (255, 255, 255),      # white
+    ROAD: (255, 255, 255),       # white
     BUILDING: (210, 180, 140),   # Tan
     HOUSE: (85, 140, 85),        # Green
     HIGHWAY: (255, 140, 0),      # Orange
     OBSTACLE: (200, 100, 50)     # Dark orange
 }
 
+# Global Arrays
 inf = math.inf
 houses = []
 path = []
 adj = [[1000]*NODES for i in range(NODES)]
 city_map = [[BUILDING for _ in range(COLS)] for _ in range(ROWS)]
+
+
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("City Graph")
@@ -53,7 +57,11 @@ def rc_from_node(node):
     return node // COLS, node % COLS
 
 
-
+# Arrays and Variables for Dijkstra's algorithm
+parentNode = [[None for i in range(COLS)] for j in range(ROWS)]
+dist = [[inf for i in range(COLS)] for j in range(ROWS)]
+visited = [[False for i in range(COLS)] for j in range(ROWS)]
+selectedNodes = [node_id(target_row, target_col)] # Nodes to target
 
 # ------------------ MAZE MAP ------------------
 
@@ -152,27 +160,83 @@ for r in range(ROWS):
                 elif neighbor_type == HIGHWAY:
                     adj[u][v] = 0.5      # Cheap
                 elif neighbor_type == HOUSE:
-                    adj[u][v] = 1.0      # Can deliver here
+                    adj[u][v] = 2.0      # Can deliver here
                 elif neighbor_type == OBSTACLE:
                     adj[u][v] = 1000      # Cannot pass
                 elif neighbor_type == BUILDING:
                     adj[u][v] = 5.0      # Expensive
 
+source = node_id(dot_row, dot_col)
+dist[dot_row][dot_col] = 0
+
+current = source
+shortestDist = 100
+
+#-----------------------calc-----------------------------
+while current not in selectedNodes:
+
+    cr, cc = rc_from_node(current)
+
+    # Relax neighbors
+    for v in range(NODES):
+        if adj[current][v] < 1000:
+            nr, nc = rc_from_node(v)
+
+            if visited[nr][nc]:
+                continue
+
+            newDist = dist[cr][cc] + adj[current][v]
+
+            if newDist < dist[nr][nc]:
+                dist[nr][nc] = newDist
+                parentNode[nr][nc] = current
+
+    # Mark current as FINAL
+    visited[cr][cc] = True
+
+    # Pick next node (minimum unvisited distance out of all unvisited nodes)
+    shortestDist = inf
+    nextNode = None
+
+    for i in range(ROWS):
+        for j in range(COLS):
+            if not visited[i][j] and dist[i][j] < shortestDist:
+                shortestDist = dist[i][j]
+                nextNode = node_id(i, j)
+
+    if nextNode is None:
+        break  # No path exists
+
+    current = nextNode
 
 
-# Main loop
+path = []
+r, c = target_row, target_col
+
+while node_id(r, c) != source:
+    path.append((r, c))
+    r, c = rc_from_node(parentNode[r][c])
+
+path.append((dot_row, dot_col))
+path.reverse()
+a=0
+# ------------------------------------- Main loop ---------------------------------------
 while running:
     screen.fill((0, 0, 0))
+
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
-    current = node_id(dot_row, dot_col)
-    neighbors = []
-    for v in range(NODES):
-        if adj[current][v] != 1000 and rc_from_node(v) not in path:
-            neighbors.append(rc_from_node(v))
+    # current = node_id(dot_row, dot_col)
+    # neighbors = []
+    # for v in range(NODES):
+    #     if adj[current][v] != 1000 and rc_from_node(v) not in path:
+    #         neighbors.append(rc_from_node(v))
+    if a < len(path):
+        dot_row, dot_col = path[a]
+        a += 1
 
     # Draw the city grid
     for r in range(ROWS):
@@ -185,21 +249,28 @@ while running:
             if(cell_type == ROAD or cell_type == HIGHWAY):
                 pygame.draw.rect(screen, (210, 180, 140), rect_pos, 1)
 
-    neighborWeights = []
-    for v in range(NODES):
-        if adj[current][v] != 1000:
-            neighborWeights.append(adj[current][v])
 
-    # Update path
-    if len(neighbors) > 0:
-        path.append((dot_row, dot_col))
-        min_index = neighborWeights.index(min(neighborWeights))
-        dot_row, dot_col = neighbors[min_index]
 
+    # ------------------------- Main Logic ----------------------------
+
+    # neighborWeights = []
+    # for v in range(NODES):
+    #     if adj[current][v] != 1000:
+    #         neighborWeights.append(adj[current][v])
+
+    # # Update path
+    # if len(neighbors) > 0:
+    #     path.append((dot_row, dot_col))
+    #     min_index = neighborWeights.index(min(neighborWeights))
+    #     dot_row, dot_col = neighbors[min_index]
+
+
+
+    # ----------------------------- Simulation ------------------------------
     # Draw path trail
     for i in path: 
         x, y = i
-        pygame.draw.circle(screen, (0, 200, 200), to_pixel(x, y), 2)
+        pygame.draw.circle(screen, (0, 0, 0), to_pixel(x, y), 2)
 
     # Draw target
     tx, ty = to_pixel(target_row, target_col)

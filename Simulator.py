@@ -4,7 +4,7 @@ import random
 
 pygame.init()
 
-random.seed(42)
+random.seed(80)
 # 42
 
 # starting variables
@@ -15,10 +15,12 @@ COLS = WIDTH // CELL
 NODES = ROWS * COLS
 
 ROAD = 0
-BUILDING = 1    
+PLAIN = 1    
 HOUSE = 2         
 HIGHWAY = 3
 OBSTACLE = 4      
+SELECTED = 5      
+PATH = 6
 
 dot_row, dot_col = ROWS - 6, 2
 target_row, target_col = 2, COLS - 3
@@ -26,10 +28,12 @@ target_row, target_col = 2, COLS - 3
 
 COLORS = {
     ROAD: (255, 255, 255),       # white
-    BUILDING: (210, 180, 140),   # Tan
+    PLAIN: (210, 180, 140),   # Tan
     HOUSE: (85, 140, 85),        # Green
     HIGHWAY: (255, 140, 0),      # Orange
-    OBSTACLE: (200, 100, 50)     # Dark orange
+    OBSTACLE: (200, 100, 50),     # Dark orange
+    SELECTED: (0, 0, 255),      # Yellow
+    PATH: (3, 243, 253)       # Light Blue
 }
 
 # Global Arrays
@@ -37,7 +41,7 @@ inf = math.inf
 houses = []
 path = []
 adj = [[1000]*NODES for i in range(NODES)]
-city_map = [[BUILDING for _ in range(COLS)] for _ in range(ROWS)]
+city_map = [[PLAIN for _ in range(COLS)] for _ in range(ROWS)]
 
 
 
@@ -61,14 +65,14 @@ def rc_from_node(node):
 parentNode = [[None for i in range(COLS)] for j in range(ROWS)]
 dist = [[inf for i in range(COLS)] for j in range(ROWS)]
 visited = [[False for i in range(COLS)] for j in range(ROWS)]
-selectedNodes = [node_id(target_row, target_col)] # Nodes to target
+selectedNodes = [] # Nodes to target
 
 # ------------------ MAZE MAP ------------------
 
-# BUILDING by default
+# PLAIN by default
 for r in range(ROWS):
     for c in range(COLS):
-        city_map[r][c] = BUILDING
+        city_map[r][c] = PLAIN
 
 STEP = 2
 
@@ -80,7 +84,7 @@ def carve_maze(r, c):
     for dr, dc in directions:
         nr, nc = r + dr, c + dc
         if 1 <= nr < ROWS-1 and 1 <= nc < COLS-1:
-            if city_map[nr][nc] == BUILDING:
+            if city_map[nr][nc] == PLAIN:
                 city_map[r + dr//2][c + dc//2] = ROAD 
                 city_map[nr][nc] = ROAD
                 carve_maze(nr, nc)
@@ -94,7 +98,7 @@ carve_maze(start_r, start_c)
 
 for r in range(2, ROWS-2):
     for c in range(2, COLS-2):
-        if city_map[r][c] == BUILDING:
+        if city_map[r][c] == PLAIN:
             if random.random() < 0.15:
                 city_map[r][c] = ROAD
 
@@ -128,7 +132,7 @@ while len(houses) < 12 and attempts < 300:
     r = random.randint(2, ROWS-3)
     c = random.randint(2, COLS-3)
 
-    if city_map[r][c] == BUILDING:
+    if city_map[r][c] == PLAIN:
         # must touch a road
         if any(
             0 <= r+dr < ROWS and 0 <= c+dc < COLS and city_map[r+dr][c+dc] == ROAD
@@ -163,80 +167,140 @@ for r in range(ROWS):
                     adj[u][v] = 2.0      # Can deliver here
                 elif neighbor_type == OBSTACLE:
                     adj[u][v] = 1000      # Cannot pass
-                elif neighbor_type == BUILDING:
+                elif neighbor_type == PLAIN:
                     adj[u][v] = 5.0      # Expensive
 
+city_map[target_row][target_col] = ROAD 
+city_map[dot_row][dot_col] = ROAD
+
+
+
 source = node_id(dot_row, dot_col)
-dist[dot_row][dot_col] = 0
-
-current = source
-shortestDist = 100
-
+targetNode = source
 #-----------------------calc-----------------------------
-while current not in selectedNodes:
+def DijkstraAlgo():
+    global targetNode, parentNode, dist, visited, selectedNodes, source
 
-    cr, cc = rc_from_node(current)
+    parentNode = [[None for i in range(COLS)] for j in range(ROWS)]
+    dist = [[inf for i in range(COLS)] for j in range(ROWS)]
+    visited = [[False for i in range(COLS)] for j in range(ROWS)]
 
-    # Relax neighbors
-    for v in range(NODES):
-        if adj[current][v] < 1000:
-            nr, nc = rc_from_node(v)
+    current = targetNode
+    tr, tc = rc_from_node(targetNode)
 
-            if visited[nr][nc]:
-                continue
+    dist[tr][tc] = 0
 
-            newDist = dist[cr][cc] + adj[current][v]
+    shortestDist = 100
+    while current not in selectedNodes:
 
-            if newDist < dist[nr][nc]:
-                dist[nr][nc] = newDist
-                parentNode[nr][nc] = current
+        cr, cc = rc_from_node(current)
 
-    # Mark current as FINAL
-    visited[cr][cc] = True
+        # Relax neighbors
+        for v in range(NODES):
+            if adj[current][v] < 1000:
+                nr, nc = rc_from_node(v)
 
-    # Pick next node (minimum unvisited distance out of all unvisited nodes)
-    shortestDist = inf
-    nextNode = None
+                if visited[nr][nc]:
+                    continue
 
-    for i in range(ROWS):
-        for j in range(COLS):
-            if not visited[i][j] and dist[i][j] < shortestDist:
-                shortestDist = dist[i][j]
-                nextNode = node_id(i, j)
+                newDist = dist[cr][cc] + adj[current][v]
 
-    if nextNode is None:
-        break  # No path exists
+                if newDist < dist[nr][nc]:
+                    dist[nr][nc] = newDist
+                    parentNode[nr][nc] = current
 
-    current = nextNode
+        # Mark current as FINAL
+        visited[cr][cc] = True
 
+        # Pick next node 
+        shortestDist = inf    # minimum unvisited distance out of all unvisited nodes
+        nextNode = None
+
+        for i in range(ROWS):
+            for j in range(COLS):
+                if not visited[i][j] and dist[i][j] < shortestDist:
+                    shortestDist = dist[i][j]
+                    nextNode = node_id(i, j)
+
+        if nextNode is None:
+            break  # No path exists
+
+        current = nextNode
+        targetNode = current
 
 path = []
-r, c = target_row, target_col
+def pathRetrace():
+    global  targetNode, source, path
 
-while node_id(r, c) != source:
-    path.append((r, c))
-    r, c = rc_from_node(parentNode[r][c])
+    target_row, target_col = rc_from_node(targetNode)
+    r, c = target_row, target_col
+    segment = []
 
-path.append((dot_row, dot_col))
-path.reverse()
+    while node_id(r, c) != source:
+        segment.append((r, c))
+        r, c = rc_from_node(parentNode[r][c])
+    segment.reverse()
+    path.extend(segment)
+
+
+
 a=0
+start = False
+path = [(dot_row, dot_col)]
+pathTrail = []
+
+
 # ------------------------------------- Main loop ---------------------------------------
 while running:
     screen.fill((0, 0, 0))
 
+    pathTrail.append((dot_row, dot_col))
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+
+        if event.type == pygame.KEYDOWN:
+            length = len(selectedNodes)
+            if event.key == pygame.K_SPACE:
+                start = True
+                for i in range(length+1):
+                    DijkstraAlgo()
+                    pathRetrace()
+                    selectedNodes.pop(selectedNodes.index(targetNode))
+                    # for s in path:
+                    #     print(s)
+                    source = targetNode
+                    if i == length-1:
+                        selectedNodes.append(node_id(dot_row, dot_col))
+
+
+                # path.append((dot_row, dot_col))
+                # path.reverse()
+
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            mx, my = event.pos
+            
+            col = mx // CELL
+            row = my // CELL
+           
+            if city_map[row][col] == HOUSE:
+                node = node_id(row, col)
+                if node not in selectedNodes:
+                    selectedNodes.append(node)
+                    city_map[row][col] = SELECTED
+
+
 
     # current = node_id(dot_row, dot_col)
     # neighbors = []
     # for v in range(NODES):
     #     if adj[current][v] != 1000 and rc_from_node(v) not in path:
     #         neighbors.append(rc_from_node(v))
-    if a < len(path):
-        dot_row, dot_col = path[a]
-        a += 1
+    if start:
+        if a < len(path):
+            dot_row, dot_col = path[a]
+            a += 1
 
     # Draw the city grid
     for r in range(ROWS):
@@ -246,7 +310,7 @@ while running:
             rect_pos = (c * CELL, r * CELL, CELL, CELL)
             pygame.draw.rect(screen, color, rect_pos)
             # Thin dark border for definition
-            if(cell_type == ROAD or cell_type == HIGHWAY):
+            if(cell_type == ROAD or cell_type == HIGHWAY or cell_type == PATH):
                 pygame.draw.rect(screen, (210, 180, 140), rect_pos, 1)
 
 
@@ -266,16 +330,30 @@ while running:
 
 
 
+          
+
+
+
+
+
     # ----------------------------- Simulation ------------------------------
-    # Draw path trail
+    # Draw path 
     for i in path: 
         x, y = i
-        pygame.draw.circle(screen, (0, 0, 0), to_pixel(x, y), 2)
+        if(city_map[x][y] != SELECTED):
+            city_map[x][y] = PATH
+        # pygame.draw.circle(screen, (0, 0, 0), to_pixel(x, y), 2)
 
-    # Draw target
-    tx, ty = to_pixel(target_row, target_col)
-    pygame.draw.circle(screen, (0, 255, 0), (tx, ty), 6)
-    pygame.draw.circle(screen, (255, 255, 255), (tx, ty), 6, 2)
+
+    # Draw path trail
+    for i in pathTrail: 
+        x, y = i
+        pygame.draw.circle(screen, (6, 135, 251), to_pixel(x, y), 3)
+
+    # # Draw target
+    # tx, ty = to_pixel(target_row, target_col)
+    # pygame.draw.circle(screen, (0, 255, 0), (tx, ty), 6)
+    # pygame.draw.circle(screen, (255, 255, 255), (tx, ty), 6, 2)
 
     # Draw Logistics Van
     ax, ay = to_pixel(dot_row, dot_col)
@@ -283,6 +361,6 @@ while running:
     pygame.draw.circle(screen, (255, 255, 255), (ax, ay), 5, 1)
 
     pygame.display.update()
-    clock.tick(1)
+    clock.tick(5)
 
 pygame.quit()

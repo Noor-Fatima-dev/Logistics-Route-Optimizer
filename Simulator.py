@@ -21,6 +21,7 @@ HIGHWAY = 3
 OBSTACLE = 4      
 SELECTED = 5      
 PATH = 6
+TRAFFIC = 7
 
 dot_row, dot_col = ROWS - 6, 2
 target_row, target_col = 2, COLS - 3
@@ -33,7 +34,8 @@ COLORS = {
     HIGHWAY: (255, 140, 0),      # Orange
     OBSTACLE: (200, 100, 50),     # Dark orange
     SELECTED: (0, 0, 255),      # Yellow
-    PATH: (3, 243, 253)       # Light Blue
+    PATH: (3, 243, 253),      # Light Blue
+    TRAFFIC: (150, 150, 150)     # Gray
 }
 
 # Global Arrays
@@ -45,7 +47,7 @@ city_map = [[PLAIN for _ in range(COLS)] for _ in range(ROWS)]
 
 
 
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
+screen = pygame.display.set_mode((WIDTH, HEIGHT+50))
 pygame.display.set_caption("City Graph")
 
 running = True
@@ -133,7 +135,7 @@ while len(houses) < 12 and attempts < 300:
     c = random.randint(2, COLS-3)
 
     if city_map[r][c] == PLAIN:
-        # must touch a road
+        # So that house can touch a road
         if any(
             0 <= r+dr < ROWS and 0 <= c+dc < COLS and city_map[r+dr][c+dc] == ROAD
             for dr, dc in [(1,0),(-1,0),(0,1),(0,-1)]
@@ -213,7 +215,7 @@ def DijkstraAlgo():
         visited[cr][cc] = True
 
         # Pick next node 
-        shortestDist = inf    # minimum unvisited distance out of all unvisited nodes
+        shortestDist = inf    # minimum distance out of all unvisited nodes
         nextNode = None
 
         for i in range(ROWS):
@@ -248,11 +250,14 @@ a=0
 start = False
 path = [(dot_row, dot_col)]
 pathTrail = []
+dragging = False
+warehouseX = dot_row
+warehouseY = dot_col
 
 
 # ------------------------------------- Main loop ---------------------------------------
 while running:
-    screen.fill((0, 0, 0))
+    screen.fill((210, 180, 140))
 
     pathTrail.append((dot_row, dot_col))
 
@@ -274,10 +279,6 @@ while running:
                     if i == length-1:
                         selectedNodes.append(node_id(dot_row, dot_col))
 
-
-                # path.append((dot_row, dot_col))
-                # path.reverse()
-
         if event.type == pygame.MOUSEBUTTONDOWN:
             mx, my = event.pos
             
@@ -291,12 +292,39 @@ while running:
                     city_map[row][col] = SELECTED
 
 
+            elif city_map[row][col] == ROAD or city_map[row][col] == HIGHWAY:
+                node = node_id(row, col)
+                dragging = True
+
+        elif event.type == pygame.MOUSEBUTTONUP:
+            dragging = False
+
+        elif event.type == pygame.MOUSEMOTION:
+            if dragging:
+                x, y = event.pos
+                col = x // CELL
+                row = y // CELL
+                if city_map[row][col] == ROAD or city_map[row][col] == HIGHWAY:
+                    city_map[row][col] = TRAFFIC
+                    u = node_id(row, col)
+                    directions = [(0,1), (-1,0), (0,-1), (1,0)]
+                    for d in directions:
+                        rowN, colN = row+d[0] , col+d[1]
+                        if 0 <= rowN < ROWS and 0 <= colN < COLS:
+                            v = node_id(rowN, colN)
+                            neighbor_type = city_map[rowN][colN]
+                            if neighbor_type == ROAD or neighbor_type == TRAFFIC or neighbor_type == HIGHWAY:
+                                adj[u][v] = 2.5    
+
+
+
 
     # current = node_id(dot_row, dot_col)
     # neighbors = []
     # for v in range(NODES):
     #     if adj[current][v] != 1000 and rc_from_node(v) not in path:
     #         neighbors.append(rc_from_node(v))
+    
     if start:
         if a < len(path):
             dot_row, dot_col = path[a]
@@ -310,39 +338,23 @@ while running:
             rect_pos = (c * CELL, r * CELL, CELL, CELL)
             pygame.draw.rect(screen, color, rect_pos)
             # Thin dark border for definition
-            if(cell_type == ROAD or cell_type == HIGHWAY or cell_type == PATH):
+            if(cell_type == ROAD or cell_type == HIGHWAY or cell_type == PATH or cell_type == TRAFFIC):
                 pygame.draw.rect(screen, (210, 180, 140), rect_pos, 1)
-
-
-
-    # ------------------------- Main Logic ----------------------------
-
-    # neighborWeights = []
-    # for v in range(NODES):
-    #     if adj[current][v] != 1000:
-    #         neighborWeights.append(adj[current][v])
-
-    # # Update path
-    # if len(neighbors) > 0:
-    #     path.append((dot_row, dot_col))
-    #     min_index = neighborWeights.index(min(neighborWeights))
-    #     dot_row, dot_col = neighbors[min_index]
-
-
-
-          
-
 
 
 
 
     # ----------------------------- Simulation ------------------------------
     # Draw path 
-    for i in path: 
-        x, y = i
+    cost = 0
+    for i in range(len(path)): 
+        x, y = path[i]
         if(city_map[x][y] != SELECTED):
             city_map[x][y] = PATH
-        # pygame.draw.circle(screen, (0, 0, 0), to_pixel(x, y), 2)
+            if i+1 < len(path):
+                cost += adj[node_id(x, y)][node_id(path[i+1][0], path[i+1][1] )]
+                
+
 
 
     # Draw path trail
@@ -360,7 +372,21 @@ while running:
     pygame.draw.circle(screen, (255, 0, 0), (ax, ay), 5)
     pygame.draw.circle(screen, (255, 255, 255), (ax, ay), 5, 1)
 
+    # Warehouse Location
+
+    wx, wy = to_pixel(warehouseX, warehouseY)
+    pygame.draw.circle(screen, (255, 0, 0), (wx, wy), 8, 1)
+
+
+
+    # Write Text
+    font = pygame.font.Font(None, 20)
+    text_surface = font.render(f"Current Position: ({dot_row}, {dot_col})", True, (255, 255, 255))
+    screen.blit(text_surface, (10, HEIGHT))
+    text_surface = font.render(f"Total Cost: {cost}", True, (255, 255, 255))
+    screen.blit(text_surface, (10, HEIGHT+15))
+
     pygame.display.update()
-    clock.tick(5)
+    clock.tick(10)
 
 pygame.quit()
